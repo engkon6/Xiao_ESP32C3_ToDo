@@ -21,7 +21,7 @@
 #define EINK_RST  D0
 #define EINK_BUSY D5
 const uint8_t ADC_PIN = 4;
-const float DIVIDER_RATIO = 2.0f;
+const float DIVIDER_RATIO = 2.05f;
 
 EPaper display;
 BatteryMonitor battery(ADC_PIN, DIVIDER_RATIO);
@@ -433,8 +433,9 @@ void handlePortalRoot() {
     int progress = (todoCount > 0) ? (completedCount * 100 / todoCount) : 0;
     
     int battPct = constrain(battery.readPercentage(), 0, 100);
+    double battVolts = battery.readVolts();
     h += "<div class='info'><strong>WiFi:</strong> " + htmlEscape(String(wifiSSID)) + " (" + WiFi.localIP().toString() + ")<br>";
-    h += "<strong>Battery:</strong> " + String(battPct) + "% | <strong>Memory:</strong> " + String(ESP.getFreeHeap()/1024) + "KB Free</div>";
+    h += "<strong>Battery:</strong> " + String(battPct) + "% (" + String(battVolts, 2) + "V) | <strong>Memory:</strong> " + String(ESP.getFreeHeap()/1024) + "KB Free</div>";
     
     h += "<h3>Progress (" + String(completedCount) + "/" + String(todoCount) + ")</h3>";
     h += "<div class='progress-container'><div class='progress-bar' style='width:" + String(progress) + "%'></div></div>";
