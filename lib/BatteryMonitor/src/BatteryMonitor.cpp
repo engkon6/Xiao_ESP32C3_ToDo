@@ -48,12 +48,10 @@ double BatteryMonitor::readVolts() const
 
 uint16_t BatteryMonitor::percentageFromMillivolts(uint16_t millivolts)
 {
+    // Simple linear: 3.0V = 0%, 4.2V = 100%
+    // y = 100 * (volts - 3.0) / (4.2 - 3.0)
     double volts = millivolts / 1000.0;
-    // Polynomial derived from LiPo samples
-    double y = -144.9390 * volts * volts * volts +
-               1655.8629 * volts * volts -
-               6158.8520 * volts +
-               7501.3202;
+    double y = 100.0 * (volts - 3.0) / 1.2;
 
     // Clamp to [0,100] and round
     y = std::max(y, 0.0);

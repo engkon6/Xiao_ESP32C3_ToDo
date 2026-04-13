@@ -21,7 +21,7 @@
 #define EINK_RST  D0
 #define EINK_BUSY D5
 const uint8_t ADC_PIN = 4;
-const float DIVIDER_RATIO = 2.05f;
+const float DIVIDER_RATIO = 2.03f;  // Calibrated: 4.15V actual / 3.73V shown
 
 EPaper display;
 BatteryMonitor battery(ADC_PIN, DIVIDER_RATIO);
