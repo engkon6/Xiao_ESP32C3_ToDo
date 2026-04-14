@@ -6,6 +6,7 @@ A high-performance, low-power e-Paper To-Do list based on the **Seeed Studio XIA
 
 ### 📋 Display Layout (800x480)
 - **Highlighted Tasks:** The first 3 tasks are prioritized with a larger font size (Size 3) for quick readability.
+- **Completed Tasks:** Visible at the bottom of the list, marked with an **"X"** prefix and standard foreground color for maximum visibility on e-Paper.
 - **Deadline Column:** Dedicated column for deadlines in `DD-MMM HH:MM` (e.g., `12-Apr 14:30`) or `DD-MMM` format.
 - **Top Status Bar:**
     - **Battery Status:** Percentage remaining.
@@ -23,8 +24,10 @@ A high-performance, low-power e-Paper To-Do list based on the **Seeed Studio XIA
 
 ### 🔋 Power & Performance
 - **Low Power:** Supports deep sleep and light sleep modes to maximize battery life.
+- **Manual Control:** A short press of the power button **instantly toggles** between sleep and wake modes, regardless of the automatic sleep settings.
 - **Persistent Storage:** Tasks and settings are saved to the ESP32's flash memory (Preferences API), surviving power loss or restarts.
-- **Maintenance Mode:** Long-press the power button to enter maintenance mode (sleep disabled).
+- **Maintenance Mode:** Hold the power button during boot to enter maintenance mode (automatic sleep disabled).
+- **Rotation Control:** Long-press (3s) the power button while awake to flip the display orientation 180 degrees.
 
 ## 🛠 Hardware Requirements
 

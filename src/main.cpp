@@ -30,6 +30,7 @@ WebServer server(80);
 
 #define MAX_TODOS 10
 #define SLEEP_DURATION_MIN 5
+#define SLEEP_MODE_DEFAULT 1  // 0 = deep sleep, 1 = light sleep
 
 char wifiSSID[32] = "";
 char wifiPassword[32] = "";
@@ -53,6 +54,7 @@ bool configPortalRunning = false;
 volatile bool webConfigDone = false;
 
 int sleepDurationMin = SLEEP_DURATION_MIN;
+int sleepMode = SLEEP_MODE_DEFAULT;  // 0 = deep sleep, 1 = light sleep
 
 constexpr unsigned long IDLE_TIMEOUT_MS = 5UL * 60UL * 1000UL;
 
@@ -71,6 +73,8 @@ void loadTodos();
 void saveTodos();
 void handlePortalRoot();
 void handlePortalSave();
+void handleSettingsRoot();
+void handleSettingsSave();
 void handleGetTodos();
 void handleAddTodo();
 void handleDeleteTodo();
@@ -120,6 +124,8 @@ void setup() {
         
         server.on("/", handlePortalRoot);
         server.on("/save", HTTP_POST, handlePortalSave);
+        server.on("/settings", HTTP_GET, handleSettingsRoot);
+        server.on("/settings/save", HTTP_POST, handleSettingsSave);
         server.on("/todos", HTTP_GET, handleGetTodos);
         server.on("/todos/add", HTTP_POST, handleAddTodo);
         server.on("/todos/delete", HTTP_POST, handleDeleteTodo);
@@ -270,6 +276,7 @@ void loadConfig() {
     preferences.getString("ntpServer", ntpServer, sizeof(ntpServer));
     if (strlen(ntpServer) == 0) strcpy(ntpServer, "pool.ntp.org");
     timezoneOffsetHours = preferences.getInt("timezone", 8);
+    sleepMode = SLEEP_MODE_DEFAULT;
     preferences.end();
     Serial.println("Config loaded");
 }
@@ -283,6 +290,7 @@ void saveConfig() {
     preferences.putInt("displayRotation", displayRotation);
     preferences.putString("ntpServer", ntpServer);
     preferences.putInt("timezone", timezoneOffsetHours);
+    preferences.putInt("sleepMode", sleepMode);
     preferences.end();
     Serial.println("Config saved");
 }
@@ -308,12 +316,18 @@ bool connectWiFiWM() {
     if (strlen(wifiSSID) > 0) {
         Serial.print("Trying WiFi: "); Serial.println(wifiSSID);
         
-        display.setRotation(0);
+        display.setRotation(displayRotation);
         display.fillScreen(darkMode ? TFT_BLACK : TFT_WHITE);
-        display.setTextSize(3);
+        display.setTextSize(4);
         display.setTextColor(darkMode ? TFT_WHITE : TFT_BLACK);
-        display.setCursor(100, 200);
-        display.printf("Connecting to %s", wifiSSID);
+        
+        int width = display.width();
+        int height = display.height();
+        
+        String line = "Connecting to " + String(wifiSSID);
+        int w = display.textWidth(line);
+        display.setCursor((width - w) / 2, height / 2);
+        display.print(line);
         display.update();
 
         WiFi.begin(wifiSSID, wifiPassword);
@@ -331,7 +345,7 @@ bool connectWiFiWM() {
         }
     }
     
-    display.setRotation(0);
+    display.setRotation(displayRotation);
     display.fillScreen(darkMode ? TFT_BLACK : TFT_WHITE);
     display.setTextSize(2);
     display.setTextColor(darkMode ? TFT_WHITE : TFT_BLACK);
@@ -351,7 +365,7 @@ bool connectWiFiWM() {
     server.on("/save", HTTP_POST, handlePortalSave);
     server.begin();
     
-    display.setRotation(0);
+    display.setRotation(displayRotation);
     display.fillScreen(darkMode ? TFT_BLACK : TFT_WHITE);
     display.setTextSize(2);
     display.setTextColor(darkMode ? TFT_WHITE : TFT_BLACK);
@@ -482,30 +496,58 @@ void handlePortalRoot() {
     h += "<hr><h3>Export & Settings</h3>";
     h += "<div style='display:flex;gap:10px;'><a href='/download.ics' class='btn' style='background:#FF9800;flex:1;font-size:12px;'>ICS Calendar</a>";
     h += "<a href='/download.txt' class='btn' style='background:#2196F3;flex:1;font-size:12px;'>TXT Export</a></div>";
-    
-    h += "<form action='/save' method='POST' style='margin-top:20px;'>";
-    h += "<label>WiFi SSID:</label><input name='ssid' value='" + htmlEscape(String(wifiSSID)) + "' maxlength='31'>";
-    h += "<label>WiFi Password:</label><input type='password' name='pass' value='" + htmlEscape(String(wifiPassword)) + "' maxlength='31'>";
-    h += "<label>Sleep (min, 0=never):</label><input name='sleepDur' type='number' value='" + String(sleepDurationMin) + "'>";
-    h += "<input type='submit' value='Save Settings' class='btn btn-secondary'></form>";
+    h += "<a href='/settings' class='btn btn-secondary' style='background:#757575;margin-top:10px;'>System Settings (WiFi/Sleep)</a>";
+    h += "<hr><form action='/save' method='POST' style='margin-top:15px;'><input type='hidden' name='darkMode' value='" + String(darkMode ? "0" : "1") + "'><input type='submit' value='Toggle " + String(darkMode ? "Light" : "Dark") + " Mode' class='btn btn-secondary'></form>";
     
     h += "</div></body></html>";
     server.send(200, "text/html", h);
 }
 
 void handlePortalSave() {
-    Serial.println("Web Portal: Save requested");
+    Serial.println("Web Portal: Saving dark mode only");
     
-    display.setRotation(0);
-    display.fillScreen(darkMode ? TFT_BLACK : TFT_WHITE);
-    display.setTextSize(2);
-    display.setTextColor(darkMode ? TFT_WHITE : TFT_BLACK);
-    display.setCursor(10, 10);
-    display.print("Saving Config...");
-    display.setCursor(10, 40);
-    display.print("Restarting soon");
-    display.update();
+    if (server.hasArg("darkMode")) {
+        bool newDarkMode = server.arg("darkMode").toInt() == 1;
+        if (newDarkMode != darkMode) {
+            darkMode = newDarkMode;
+            saveConfig();
+            refreshDisplay();
+        }
+    }
+    
+    server.send(200, "text/html", "<html><body><h1>Theme Saved!</h1><p><a href='/'>Back to To-Do</a></p></body></html>");
+}
 
+void handleSettingsRoot() {
+    String h = "<html><head><title>XIAO ToDo Settings</title><meta name='viewport' content='width=device-width, initial-scale=1'>";
+    h += "<style>";
+    h += "body{font-family:sans-serif;padding:20px;background:#f4f4f4;color:#333;}";
+    h += ".card{background:white;padding:20px;border-radius:12px;max-width:480px;margin:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);}";
+    h += "input, select{width:100%;padding:12px;margin:8px 0;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;font-size:16px;}";
+    h += ".btn{color:white;border:none;cursor:pointer;background:#2196F3;display:block;text-align:center;text-decoration:none;font-weight:bold;padding:12px;}";
+    h += ".btn-secondary{background:#757575;margin-top:10px;}";
+    h += "h2{margin-top:0;}";
+    h += ".link-btn{background:#4CAF50;padding:10px;border-radius:6px;color:white;text-decoration:none;display:inline-block;margin-bottom:15px;}";
+    h += "</style></head><body><div class='card'>";
+    h += "<h2>System Settings</h2>";
+    h += "<a href='/' class='link-btn'>&larr; Back to To-Do</a>";
+    
+    h += "<form action='/settings/save' method='POST'>";
+    h += "<label>WiFi SSID:</label><input name='ssid' value='" + htmlEscape(String(wifiSSID)) + "' maxlength='31'>";
+    h += "<label>WiFi Password:</label><input type='password' name='pass' value='" + htmlEscape(String(wifiPassword)) + "' maxlength='31'>";
+    h += "<label>Sleep Mode:</label>";
+    h += "<select name='sleepMode'>";
+    h += "<option value='1' " + String(sleepMode == 1 ? "selected" : "") + ">Light Sleep (faster wake)</option>";
+    h += "<option value='0' " + String(sleepMode == 0 ? "selected" : "") + ">Deep Sleep (lower power)</option>";
+    h += "</select>";
+    h += "<label>Sleep Duration (minutes, 0=never):</label><input name='sleepDur' type='number' value='" + String(sleepDurationMin) + "' min='0'>";
+    h += "<input type='submit' value='Save Settings' class='btn'>";
+    h += "</form>";
+    h += "</div></body></html>";
+    server.send(200, "text/html", h);
+}
+
+void handleSettingsSave() {
     if (server.hasArg("ssid")) {
         strncpy(wifiSSID, server.arg("ssid").c_str(), 31);
         wifiSSID[31] = '\0';
@@ -517,13 +559,10 @@ void handlePortalSave() {
     if (server.hasArg("sleepDur")) {
         sleepDurationMin = server.arg("sleepDur").toInt();
     }
-    if (server.hasArg("darkMode")) {
-        darkMode = server.arg("darkMode").toInt() == 1;
-    }
+    if (server.hasArg("sleepMode")) sleepMode = server.arg("sleepMode").toInt();
     
     saveConfig();
-    server.send(200, "text/html", "<html><body><h1>Config Saved!</h1><p>Restarting...</p></body></html>");
-    webConfigDone = true;
+    server.send(200, "text/html", "<html><body><h1>Settings Saved!</h1><p><a href='/settings'>Back to Settings</a></p></body></html>");
 }
 
 void handleGetTodos() {
@@ -779,7 +818,7 @@ void refreshDisplay() {
     struct tm now = {};
     getLocalTime(&now);
 
-    display.setRotation(0);
+    display.setRotation(displayRotation);
     display.fillScreen(bgColor);
     Serial.println("Screen filled");
 
@@ -821,10 +860,14 @@ void refreshDisplay() {
     int midCol = 500;   // Deadline start
     int rightCol = 650; // QR Code area start
     
+    // Calculate completed count for progress display
+    int completedCount = 0;
+    for(int i = 0; i < todoCount; i++) if(todos[i].completed) completedCount++;
+    
     // --- Main Headers (Size 2) ---
     display.setTextSize(2);
     display.setCursor(leftCol, 40);
-    display.printf("To-do: %d/%d", todoCount, MAX_TODOS);
+    display.printf("Progress: %d/%d", completedCount, todoCount);
     
     display.setCursor(midCol + 5, 40);
     display.print("Deadline");
@@ -859,20 +902,21 @@ void refreshDisplay() {
         }
     }
 
-    // --- Task List ---
+    // --- Task List (active first, then completed) ---
     int yPos = 75;
+    bool hasActiveOrCompleted = false;
     
+    // First pass: Active tasks (not completed)
     for (int i = 0; i < todoCount && yPos < 450; i++) {
-        int currentFontSize = (i < 3) ? 3 : 2; // Size 3 for first 3, Size 2 for rest
+        if (todos[i].completed) continue;
+        
+        hasActiveOrCompleted = true;
+        int currentFontSize = (i < 3) ? 3 : 2;
         int rowHeight = (currentFontSize == 3) ? 38 : 28;
-        int maxLineChars = 24; // Limited to 24 characters as requested
+        int maxLineChars = 24;
         int titleOffset = (currentFontSize == 3) ? 45 : 35;
 
-        if (todos[i].completed) {
-            display.setTextColor(TFT_DARKGREY, bgColor);
-        } else {
-            display.setTextColor(fgColor, bgColor);
-        }
+        display.setTextColor(fgColor, bgColor);
         
         display.setTextSize(currentFontSize);
         display.setCursor(leftCol, yPos);
@@ -898,9 +942,9 @@ void refreshDisplay() {
         display.setCursor(leftCol + titleOffset, yPos);
         display.print(line1);
         
-        // Deadline Column (Locked to Font Size 2)
+        // Deadline Column
         display.setTextSize(2); 
-        display.setCursor(midCol + 5, yPos + ((currentFontSize == 3) ? 4 : 0)); // Center vertically relative to size 3 task
+        display.setCursor(midCol + 5, yPos + ((currentFontSize == 3) ? 4 : 0));
         if (strlen(todos[i].date) >= 10) {
             String d = String(todos[i].date);
             String dd = d.substring(8, 10);
@@ -917,15 +961,94 @@ void refreshDisplay() {
         yPos += rowHeight;
         
         if (line2.length() > 0) {
-            display.setTextSize(currentFontSize); // Revert to task font size for line 2
+            display.setTextSize(currentFontSize);
             display.setCursor(leftCol + titleOffset, yPos);
             display.print(line2);
             yPos += rowHeight;
         }
         
-        // Horizontal line after task
         display.drawLine(leftCol, yPos - 2, rightCol - 5, yPos - 2, fgColor);
-        yPos += 2; 
+        yPos += 2;
+    }
+    
+    // Only add separator if there are any active tasks
+    bool hasCompleted = false;
+    for (int i = 0; i < todoCount; i++) {
+        if (todos[i].completed) { hasCompleted = true; break; }
+    }
+    
+    // Second pass: Completed tasks (moved to bottom)
+    bool firstCompleted = true;
+    for (int i = 0; i < todoCount && yPos < 450; i++) {
+        if (!todos[i].completed) continue;
+        
+        // Add separator line before first completed task
+        if (firstCompleted) {
+            display.drawLine(leftCol, yPos - 5, rightCol - 5, yPos - 5, TFT_DARKGREY);
+            yPos += 10;
+            firstCompleted = false;
+        }
+        
+        hasActiveOrCompleted = true;
+        int currentFontSize = 2;
+        int rowHeight = 28;
+        int maxLineChars = 22; // Reduced to fit tick prefix
+        int titleOffset = 50; // Increased for tick prefix
+
+        display.setTextColor(fgColor, bgColor);
+        
+        // Add checkmark prefix for completed tasks
+        display.setTextSize(currentFontSize);
+        display.setCursor(leftCol, yPos);
+        display.printf("%d. X", i + 1);
+        
+        String t = String(todos[i].title);
+        String line1 = "";
+        String line2 = "";
+        
+        if (t.length() <= maxLineChars) {
+            line1 = t;
+        } else {
+            int spacePos = t.lastIndexOf(' ', maxLineChars);
+            if (spacePos > (maxLineChars/2)) {
+                line1 = t.substring(0, spacePos);
+                line2 = t.substring(spacePos + 1);
+            } else {
+                line1 = t.substring(0, maxLineChars);
+                line2 = t.substring(maxLineChars);
+            }
+        }
+        
+        display.setCursor(leftCol + titleOffset, yPos);
+        display.print(line1);
+        
+        // Deadline Column
+        display.setTextSize(2); 
+        display.setCursor(midCol + 5, yPos);
+        if (strlen(todos[i].date) >= 10) {
+            String d = String(todos[i].date);
+            String dd = d.substring(8, 10);
+            int mm = d.substring(5, 7).toInt();
+            const char* months[] = {"","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+            
+            if (strlen(todos[i].time) > 0) {
+                display.printf("%s-%s %s", dd.c_str(), months[mm], todos[i].time);
+            } else {
+                display.printf("%s-%s", dd.c_str(), months[mm]);
+            }
+        }
+
+        yPos += rowHeight;
+        
+        if (line2.length() > 0) {
+            display.setTextSize(currentFontSize);
+            display.setCursor(leftCol + titleOffset, yPos);
+            display.print(line2);
+            yPos += rowHeight;
+        }
+        
+        display.drawLine(leftCol, yPos - 2, rightCol - 5, yPos - 2, fgColor);
+        yPos += 2;
     }
 
     if (todoCount == 0) {
@@ -950,7 +1073,7 @@ void handleButtons() {
             rotation_triggered = false;
         }
         if (millis() - power_hold_rotation > 3000 && !rotation_triggered) {
-            displayRotation = (displayRotation == 0) ? 1 : 0;
+            displayRotation = (displayRotation == 0) ? 2 : 0;
             saveConfig();
             Serial.print("Display rotation toggled: "); Serial.println(displayRotation);
             refreshDisplay();
@@ -958,8 +1081,9 @@ void handleButtons() {
         }
     } else {
         if (power_hold_rotation > 0 && !rotation_triggered && millis() - power_hold_rotation < 3000) {
-            if (!preparing_to_sleep && sleepDurationMin > 0) {
-                Serial.println("Power button: short press -> sleep");
+            // Short press - force sleep even if sleepDurationMin is 0
+            if (!preparing_to_sleep) {
+                Serial.println("Power button: short press -> forced sleep");
                 preparing_to_sleep = true;
                 sleepPending = true;
             }
@@ -979,19 +1103,25 @@ void showWakeScreen() {
     uint16_t bgColor = darkMode ? TFT_BLACK : TFT_WHITE;
     uint16_t fgColor = darkMode ? TFT_WHITE : TFT_BLACK;
     
-    display.setRotation(0);
+    display.setRotation(displayRotation);
     display.fillScreen(bgColor);
     Serial.println("showWakeScreen: fillScreen done");
 
     display.setTextColor(fgColor, bgColor);
     display.setTextSize(4);
 
-    display.setCursor(200, 200);
-    display.print("Waking up...");
+    int width = display.width();
+    int height = display.height();
 
-    display.setTextSize(2);
-    display.setCursor(250, 260);
-    display.print("Connecting to WiFi");
+    String line1 = "Waking up...";
+    int w1 = display.textWidth(line1);
+    display.setCursor((width - w1) / 2, height / 2 - 40);
+    display.print(line1);
+
+    String line2 = "Connecting to WiFi";
+    int w2 = display.textWidth(line2);
+    display.setCursor((width - w2) / 2, height / 2 + 10);
+    display.print(line2);
 
     Serial.println("showWakeScreen: about to call update()...");
     display.update();
@@ -999,8 +1129,9 @@ void showWakeScreen() {
 }
 
 void enterSleep() {
-    if (sleepDurationMin == 0) {
-        Serial.println("Sleep disabled - never sleep");
+    // If sleepDurationMin is 0, we only sleep if manually triggered via sleepPending
+    if (sleepDurationMin == 0 && !sleepPending) {
+        Serial.println("Sleep disabled - never sleep automatically");
         sleepPending = false;
         preparing_to_sleep = false;
         lastActivityTime = millis();
@@ -1008,29 +1139,47 @@ void enterSleep() {
     }
 
     Serial.println("Going to sleep...");
-    Serial.print("Mode: Light Sleep");
-    Serial.print("Duration: "); Serial.print(sleepDurationMin); Serial.println(" min");
+    if (sleepPending) Serial.println("(Forced by button)");
 
+    Serial.print("Mode: ");
+    Serial.println(sleepMode == 0 ? "Deep Sleep" : "Light Sleep");
+
+    // Configure GPIO wakeup
     gpio_wakeup_enable(
         (gpio_num_t)InputManager::POWER_BUTTON_PIN,
         GPIO_INTR_LOW_LEVEL
     );
     esp_sleep_enable_gpio_wakeup();
 
-    esp_sleep_enable_timer_wakeup(
-        sleepDurationMin * 60ULL * 1000000ULL
-    );
+    // Only enable timer wakeup if duration > 0
+    if (sleepDurationMin > 0) {
+        Serial.print("Duration: "); Serial.print(sleepDurationMin); Serial.println(" min");
+        esp_sleep_enable_timer_wakeup(
+            sleepDurationMin * 60ULL * 1000000ULL
+        );
+    } else {
+        Serial.println("Timer wakeup disabled (duration=0)");
+    }
 
-    esp_light_sleep_start();
+    if (sleepMode == 0) {
+        // Deep Sleep
+        display.sleep();
+        Serial.println("Display put to sleep");
+        delay(100);
+        esp_deep_sleep_start();
+    } else {
+        // Light Sleep
+        esp_light_sleep_start();
+    }
 
     Serial.println("Woke from sleep");
-    
+
     preparing_to_sleep = false;
     sleepPending = false;
     lastActivityTime = millis();
-    
+
     delay(500);
-    
+
     showWakeScreen();
 
     unsigned long wakeWait = millis();
@@ -1041,7 +1190,7 @@ void enterSleep() {
 
     WiFi.mode(WIFI_STA);
     WiFi.begin(wifiSSID, wifiPassword);
-    
+
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         delay(500);
@@ -1052,7 +1201,6 @@ void enterSleep() {
 
     refreshDisplay();
 }
-
 void printWakeReason() {
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
