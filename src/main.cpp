@@ -494,8 +494,8 @@ void handlePortalRoot() {
     }
     
     h += "<hr><h3>Export & Settings</h3>";
-    h += "<div style='display:flex;gap:10px;'><a href='/download.ics' class='btn' style='background:#FF9800;flex:1;font-size:12px;'>ICS Calendar</a>";
-    h += "<a href='/download.txt' class='btn' style='background:#2196F3;flex:1;font-size:12px;'>TXT Export</a></div>";
+    h += "<div style='display:flex;gap:10px;'><a href='/download.ics' class='btn' style='background:#FF9800;flex:1;font-size:12px;'>Calendar (ICS)</a>";
+    h += "<a href='/download.txt' class='btn' style='background:#2196F3;flex:1;font-size:12px;'>Text (TXT)</a></div>";
     h += "<a href='/settings' class='btn btn-secondary' style='background:#757575;margin-top:10px;'>System Settings (WiFi/Sleep)</a>";
     h += "<hr><form action='/save' method='POST' style='margin-top:15px;'><input type='hidden' name='darkMode' value='" + String(darkMode ? "0" : "1") + "'><input type='submit' value='Toggle " + String(darkMode ? "Light" : "Dark") + " Mode' class='btn btn-secondary'></form>";
     
